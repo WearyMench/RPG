@@ -1,0 +1,45 @@
+# Sistema operativo
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Editores e IDEs
+.vscode/
+.idea/
+*.code-workspace
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+
+# Archivos temporales y registros
+*.log
+*.tmp
+*.temp
+*.bak
+*.swp
+*~
+
+# Dependencias y herramientas web (si se agregan más adelante)
+node_modules/
+.npm/
+.yarn/
+.pnpm-store/
+
+# Salidas generadas
+dist/
+build/
+coverage/
+.cache/
+
+# Servidores y variables locales
+.env
+.env.*
+!.env.example
+*.pid
+
+# Python (usado opcionalmente como servidor local)
+__pycache__/
+*.py[cod]
+.venv/
+venv/
