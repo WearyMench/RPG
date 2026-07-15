@@ -1,4 +1,4 @@
-# Normaliza los finales de línea entre Windows, macOS y Linux.
+# Normalize line endings across Windows, macOS, and Linux.
 * text=auto
 *.html text eol=lf
 *.css text eol=lf
@@ -8,7 +8,7 @@
 *.yml text eol=lf
 *.yaml text eol=lf
 
-# Assets binarios: Git no debe intentar combinarlos como texto.
+# Binary assets: Git should not attempt to merge them as text.
 *.png binary
 *.jpg binary
 *.jpeg binary

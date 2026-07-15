@@ -1,9 +1,9 @@
-# Sistema operativo
+# Operating system
 .DS_Store
 Thumbs.db
 Desktop.ini
 
-# Editores e IDEs
+# Editors and IDEs
 .vscode/
 .idea/
 *.code-workspace
@@ -12,7 +12,7 @@ Desktop.ini
 *.userosscache
 *.sln.docstates
 
-# Archivos temporales y registros
+# Temporary files and logs
 *.log
 *.tmp
 *.temp
@@ -20,25 +20,25 @@ Desktop.ini
 *.swp
 *~
 
-# Dependencias y herramientas web (si se agregan más adelante)
+# Web dependencies and tooling (if added later)
 node_modules/
 .npm/
 .yarn/
 .pnpm-store/
 
-# Salidas generadas
+# Generated output
 dist/
 build/
 coverage/
 .cache/
 
-# Servidores y variables locales
+# Local servers and environment variables
 .env
 .env.*
 !.env.example
 *.pid
 
-# Python (usado opcionalmente como servidor local)
+# Python (optionally used as a local server)
 __pycache__/
 *.py[cod]
 .venv/

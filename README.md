@@ -1,21 +1,21 @@
-# Crónicas del Valle
+# Chronicles of the Valley
 
-Prototipo RPG de acción creado con los assets incluidos de Tiny Swords. No requiere instalar dependencias.
+An action RPG prototype built with the included Tiny Swords assets. No dependencies need to be installed.
 
-## Jugar
+## Running the game
 
-Desde esta carpeta ejecuta:
+Run this command from the project directory:
 
 ```powershell
 python -m http.server 8000
 ```
 
-Después abre <http://localhost:8000> en el navegador.
+Then open <http://localhost:8000> in your browser.
 
-## Controles
+## Controls
 
-- `WASD` o flechas: mover al caballero.
-- `Espacio` o clic: atacar.
-- `R`: reiniciar tras ganar o perder.
+- `WASD` or arrow keys: move the knight.
+- `Space` or click: attack.
+- `R`: restart after winning or losing.
 
-El objetivo es derrotar a los nueve invasores rojos. El escenario incluye cámara con seguimiento, animaciones, vida, combate, partículas y condición de victoria/derrota.
+Your goal is to defeat the nine red invaders. The game includes a following camera, animations, health, combat, particles, and win/lose conditions.

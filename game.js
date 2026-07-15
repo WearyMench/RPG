@@ -44,7 +44,7 @@ function reset() {
   state = {
     hero: { x: 430, y: 900, hp: 8, maxHp: 8, speed: 220, facing: 1, attack: 0, attackCd: 0, inv: 0, anim: 0 },
     enemies, camera: { x: 0, y: 0 }, time: 0, kills: 0, over: false, won: false,
-    particles: [], message: "Derrota a los invasores del castillo rojo",
+    particles: [], message: "Defeat the invaders from the red castle",
   };
 }
 
@@ -150,15 +150,15 @@ function drawWorld() {
 function roundRect(x, y, w, h, r) { ctx.beginPath(); ctx.roundRect(x, y, w, h, r); ctx.fill(); }
 function drawUI() {
   ctx.fillStyle = "rgba(20,28,31,.82)"; roundRect(18, 18, 310, 94, 14);
-  ctx.fillStyle = "#f7e7b2"; ctx.font = "800 20px system-ui"; ctx.fillText("CRÓNICAS DEL VALLE", 36, 48);
-  ctx.font = "600 14px system-ui"; ctx.fillStyle = "#d9e5cf"; ctx.fillText(`Enemigos: ${state.kills} / ${state.enemies.length}`, 36, 75);
-  ctx.fillText(`Vida: ${"♥".repeat(Math.max(0, state.hero.hp))}`, 36, 98);
-  const text = innerWidth < 700 ? "Mover: WASD · Atacar: ESPACIO" : "WASD / Flechas para moverte   ·   ESPACIO o clic para atacar";
+  ctx.fillStyle = "#f7e7b2"; ctx.font = "800 20px system-ui"; ctx.fillText("CHRONICLES OF THE VALLEY", 36, 48);
+  ctx.font = "600 14px system-ui"; ctx.fillStyle = "#d9e5cf"; ctx.fillText(`Enemies: ${state.kills} / ${state.enemies.length}`, 36, 75);
+  ctx.fillText(`Health: ${"♥".repeat(Math.max(0, state.hero.hp))}`, 36, 98);
+  const text = innerWidth < 700 ? "Move: WASD · Attack: SPACE" : "WASD / Arrow keys to move   ·   SPACE or click to attack";
   ctx.font = "600 14px system-ui"; const tw = ctx.measureText(text).width; ctx.fillStyle = "rgba(20,28,31,.76)"; roundRect(innerWidth / 2 - tw / 2 - 18, innerHeight - 54, tw + 36, 36, 10); ctx.fillStyle = "#fff4cf"; ctx.fillText(text, innerWidth / 2 - tw / 2, innerHeight - 30);
   if (state.over) {
     ctx.fillStyle = "rgba(12,18,21,.68)"; ctx.fillRect(0, 0, innerWidth, innerHeight);
-    ctx.textAlign = "center"; ctx.fillStyle = state.won ? "#ffe08a" : "#ff9b91"; ctx.font = "900 48px system-ui"; ctx.fillText(state.won ? "¡EL VALLE ESTÁ A SALVO!" : "HAS CAÍDO EN BATALLA", innerWidth / 2, innerHeight / 2 - 18);
-    ctx.fillStyle = "white"; ctx.font = "600 18px system-ui"; ctx.fillText("Presiona R para volver a jugar", innerWidth / 2, innerHeight / 2 + 30); ctx.textAlign = "left";
+    ctx.textAlign = "center"; ctx.fillStyle = state.won ? "#ffe08a" : "#ff9b91"; ctx.font = "900 48px system-ui"; ctx.fillText(state.won ? "THE VALLEY IS SAFE!" : "YOU FELL IN BATTLE", innerWidth / 2, innerHeight / 2 - 18);
+    ctx.fillStyle = "white"; ctx.font = "600 18px system-ui"; ctx.fillText("Press R to play again", innerWidth / 2, innerHeight / 2 + 30); ctx.textAlign = "left";
   }
 }
 
@@ -174,5 +174,5 @@ canvas.addEventListener("pointerdown", attack);
   try {
     await Promise.all(Object.entries(paths).map(async ([key, path]) => images[key] = await loadImage(path)));
     resize(); reset(); document.querySelector("#loading").classList.add("hidden"); requestAnimationFrame(loop);
-  } catch (err) { document.querySelector("#loading").textContent = "No se pudieron cargar los assets. Ejecuta el juego con un servidor local."; console.error(err); }
+  } catch (err) { document.querySelector("#loading").textContent = "The assets could not be loaded. Run the game through a local server."; console.error(err); }
 })();
