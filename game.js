@@ -18,8 +18,7 @@ const paths = {
   bush1: A + "Decorations/Bushes/Bushe1.png", bush2: A + "Decorations/Bushes/Bushe2.png", bush3: A + "Decorations/Bushes/Bushe3.png", bush4: A + "Decorations/Bushes/Bushe4.png",
   sheep: A + "Decorations/Sheep/Sheep_Idle.png", fire: A + "Effects/Fire/Fire.png",
   tilemap1: A + "Terrain/Tilemap_color1.png", tilemap2: A + "Terrain/Tilemap_color2.png", tilemap3: A + "Terrain/Tilemap_color3.png",
-  // Encode # because browsers otherwise treat it as a URL fragment.
-  water1: A + "Terrain/Water_FlatGround_%231_(12frames).png", water2: A + "Terrain/Water_FlatGround_%232_(12frames).png", water3: A + "Terrain/Water_FlatGround_%233_(12frames).png", water4: A + "Terrain/Water_FlatGround_%234_(12frames).png",
+  water1: A + "Terrain/Water_FlatGround_1_(12frames).png", water2: A + "Terrain/Water_FlatGround_2_(12frames).png", water3: A + "Terrain/Water_FlatGround_3_(12frames).png", water4: A + "Terrain/Water_FlatGround_4_(12frames).png",
 };
 const classes = {
   warrior: { name: "Warrior", description: "Balanced melee fighter", hp: 9, speed: 220, range: 112, cooldown: .5, damage: 2, idle: 8, run: 6, attack: 4, size: 112, foot: 32 },
