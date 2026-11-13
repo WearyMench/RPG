@@ -1,17 +1,17 @@
 :root { color-scheme: dark; }
 * { box-sizing: border-box; }
 html, body { margin: 0; width: 100%; height: 100%; overflow: hidden; background: #17212b; }
-body { font-family: Georgia, "Times New Roman", serif; }
-canvas { display: block; width: 100%; height: 100%; image-rendering: pixelated; cursor: crosshair; }
+body { font-family: "Pixelify Sans", Georgia, serif; }
+canvas { display: block; width: 100%; height: 100%; image-rendering: pixelated; cursor: default; touch-action: none; user-select: none; -webkit-user-select: none; -webkit-tap-highlight-color: transparent; }
+/* Loading plate styled like the in-game wood-and-parchment panels. */
 #loading {
-  position: fixed; inset: 0; display: grid; place-items: center; color: #ffe2a0;
-  background-color: #17231f; font-weight: 800; font-size: 1.1rem;
-  letter-spacing: .1em; text-transform: uppercase; transition: opacity .25s;
-  text-shadow: 3px 3px #1b1510;
+  position: fixed; inset: 0; display: grid; place-items: center; color: #4a2b16;
+  background: radial-gradient(circle, #1f2c26 0%, #0e1412 100%); font-weight: 700; font-size: 1.1rem;
+  letter-spacing: .08em; text-transform: uppercase; transition: opacity .25s;
 }
 #loading::before {
-  content: ""; position: absolute; width: min(420px, 80vw); height: 90px;
-  border: 4px solid #382b21; outline: 3px solid #b58a4b;
-  background: #24332c; box-shadow: 8px 8px rgba(0,0,0,.35); z-index: -1;
+  content: ""; position: absolute; width: min(420px, 80vw); height: 84px;
+  background: #f0dcae; border: 9px solid #7a4a2a; outline: 2px solid #24150c;
+  box-shadow: inset 0 0 0 2px #24150c, inset 0 3px 0 2px #b8925a, 4px 6px 0 2px rgba(0,0,0,.4); z-index: -1;
 }
 #loading.hidden { opacity: 0; pointer-events: none; }
