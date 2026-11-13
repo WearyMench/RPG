@@ -23,10 +23,10 @@ const paths = {
   water1: A + "Terrain/Water_FlatGround_1_(12frames).png", water2: A + "Terrain/Water_FlatGround_2_(12frames).png", water3: A + "Terrain/Water_FlatGround_3_(12frames).png", water4: A + "Terrain/Water_FlatGround_4_(12frames).png", waterBg: A + "Terrain/Water Background color.png",
 };
 const classes = {
-  warrior: { name: "Warrior", description: "Balanced melee fighter", hp: 9, speed: 220, range: 112, cooldown: .5, damage: 2, idle: 8, run: 6, attack: 4, size: 112, foot: 32 },
+  warrior: { name: "Warrior", description: "Balanced melee fighter", hp: 9, speed: 220, range: 44, depth: 26, hitAt: .5, cooldown: .5, damage: 2, idle: 8, run: 6, attack: 4, size: 112, foot: 32 },
   archer: { name: "Archer", description: "Fast ranged attacker", hp: 6, speed: 235, range: 520, cooldown: .72, damage: 1, idle: 6, run: 4, attack: 8, size: 108, foot: 32 },
-  lancer: { name: "Lancer", description: "Durable with extra reach", hp: 11, speed: 195, range: 158, cooldown: .7, damage: 2, idle: 12, run: 6, attack: 3, size: 122, foot: 47 },
-  monk: { name: "Monk", description: "Healing area pulse", hp: 8, speed: 210, range: 175, cooldown: 1.15, damage: 1, idle: 6, run: 4, attack: 11, size: 108, foot: 33 },
+  lancer: { name: "Lancer", description: "Durable with extra reach", hp: 11, speed: 195, range: 62, depth: 20, hitAt: .3, cooldown: .7, damage: 2, idle: 12, run: 6, attack: 3, size: 122, foot: 47 },
+  monk: { name: "Monk", description: "Healing area pulse", hp: 8, speed: 210, range: 85, cooldown: 1.15, damage: 1, idle: 6, run: 4, attack: 11, size: 108, foot: 33 },
 };
 const images = {}, WORLD = { w: 41 * 64, h: 28 * 64 }, keys = new Set(), ARROW_SPEED = 570;
 let state, last = performance.now(), groundCache = null, groundChunks = [], waterRuns = [], touchUsed = false;
@@ -473,7 +473,7 @@ function drawFire(item) {
 
 function ignite(a, seconds) { if (!(a.burn > 0)) audio.play("ignite"); a.burn = Math.max(a.burn || 0, seconds); a.burnTick = a.burnTick > 0 ? a.burnTick : .5; }
 // Fire ignores the brief hit-invulnerability and has no knockback.
-function fireDamage(e, damage) { if (e.dead) return; e.hp -= damage; e.hurt = Math.max(e.hurt, .12); burst(e.x, e.y - 40, "#fb923c", 6); floatText(e.x, e.y - 110, `-${damage}`, "#ffb36b"); if (e.hp <= 0) killEnemy(e); }
+function fireDamage(e, damage) { if (e.dead) return; e.hp -= damage; e.hurt = Math.max(e.hurt, .12); burst(e.x, e.y - 40, "#fb923c", 6); floatText(e.x, e.y - 78, `-${damage}`, "#ffb36b"); if (e.hp <= 0) killEnemy(e); }
 
 function tendHearth(fire, dt) {
   const h = state.hero, safe = !state.enemies.some(e => !e.dead && distance(e, h) < 450);
@@ -481,7 +481,7 @@ function tendHearth(fire, dt) {
   if (!fire.resting) { fire.restT = 0; return; }
   if (!state.hearthTip) { state.hearthTip = true; state.bannerText = "THE HEARTH MENDS YOUR WOUNDS"; state.banner = 2.4; }
   fire.restT = (fire.restT || 0) + dt;
-  if (fire.restT >= 1.1) { fire.restT = 0; h.hp = Math.min(h.maxHp, h.hp + 1); floatText(h.x, h.y - 125, "+1", "#86efac"); burst(h.x, h.y - 50, "#86efac", 6); audio.play("heal"); }
+  if (fire.restT >= 1.1) { fire.restT = 0; h.hp = Math.min(h.maxHp, h.hp + 1); floatText(h.x, h.y - 84, "+1", "#86efac"); burst(h.x, h.y - 50, "#86efac", 6); audio.play("heal"); }
 }
 
 function updateFire(dt) {
@@ -588,6 +588,17 @@ function floatText(x, y, text, color) { state.texts.push({ x: x + (Math.random()
 function shake(amount) { state.shake = Math.max(state.shake, amount); }
 
 const BODY_RADIUS = { sheep: 19, pawn: 16 };
+// Combat geometry, measured from the sprites as drawn (feet at x, y). It is a top-down view, so hits are tested on the ground plane:
+// `w` is a body's half width, `d` how far up/down (in depth) a blow can still connect with it.
+const HURTBOX = { body: { w: 18, d: 16 }, boss: { w: 32, d: 24 } };
+const hurtbox = a => a.boss ? HURTBOX.boss : HURTBOX.body;
+// Enemy blows: reach is the weapon tip ahead of the feet, standoff where they stand to swing, swing the attack length.
+const ENEMY_STRIKE = { reach: 40, depth: 18, standoff: 44, swing: .58 }, BOSS_STRIKE = { reach: 76, depth: 26, standoff: 70, swing: .72 };
+// Does a blow from `a` facing `facing` reach body `b`? The box runs from just behind `a` to `reach` px ahead.
+function strikes(a, facing, b, reach, depth, back = 10) {
+  const hb = hurtbox(b), ahead = (b.x - a.x) * facing;
+  return ahead >= -back - hb.w && ahead <= reach + hb.w && Math.abs(b.y - a.y) <= depth + hb.d;
+}
 function moveWithCollisions(actor, dx, dy) {
   // Water and terraces are solid: a step that would put the feet on one is undone.
   const blocked = (x, y) => isSolidAt(x - 14, y) || isSolidAt(x + 14, y) || isSolidAt(x, y - 8) || isSolidAt(x, y + 6);
@@ -612,7 +623,7 @@ function moveWithCollisions(actor, dx, dy) {
 }
 
 function damageEnemy(e, damage, pushX = 0, pushY = 0) {
-  if (e.dead || e.hurt > 0) return; e.hp -= damage; e.hurt = .2; moveWithCollisions(e, pushX, pushY); burst(e.x, e.y - 35, "#ffd166"); floatText(e.x, e.y - (e.boss ? 150 : 110), `-${damage}`, "#ffe08a"); shake(e.boss ? 4 : 2.5);
+  if (e.dead || e.hurt > 0) return; e.hp -= damage; e.hurt = .2; moveWithCollisions(e, pushX, pushY); burst(e.x, e.y - 35, "#ffd166"); floatText(e.x, e.y - (e.boss ? 126 : 78), `-${damage}`, "#ffe08a"); shake(e.boss ? 4 : 2.5);
   if (e.hp <= 0) killEnemy(e);
   else audio.play("hit");
 }
@@ -627,18 +638,21 @@ function killEnemy(e) {
 }
 
 function damageHero(amount, color) {
-  const h = state.hero; h.hp -= amount; state.damageTaken += amount; burst(h.x, h.y - 35, color, 10); floatText(h.x, h.y - 125, `-${amount}`, "#ff8f80"); shake(6); audio.play("hurt");
+  const h = state.hero; h.hp -= amount; state.damageTaken += amount; burst(h.x, h.y - 35, color, 10); floatText(h.x, h.y - 84, `-${amount}`, "#ff8f80"); shake(6); audio.play("hurt");
 }
 
 function performHeroHit() {
   const h = state.hero, c = classes[state.selected], damage = c.damage + h.damageBonus;
   // Arrow lifetime follows the class range, so Long Reach also helps the archer.
   if (state.selected === "archer") { state.projectiles.push({ x: h.x + h.facing * 35, y: h.y - 48, vx: h.facing * ARROW_SPEED, life: (c.range + h.rangeBonus) / ARROW_SPEED, damage, facing: h.facing }); audio.play("shoot"); return; }
+  const reach = c.range + h.rangeBonus;
   for (const e of state.enemies) {
-    const d = distance(h, e), front = Math.sign(e.x - h.x || h.facing) === h.facing;
-    if (!e.dead && d < c.range + h.rangeBonus && (state.selected === "monk" || front)) { const dx = (e.x - h.x) / (d || 1), dy = (e.y - h.y) / (d || 1); damageEnemy(e, damage, dx * (e.boss ? 10 : 32), dy * (e.boss ? 8 : 22)); }
+    if (e.dead) continue;
+    // The monk's pulse is a ring on the ground (drawn in drawActor); melee blows only land in front.
+    const hb = hurtbox(e), hit = state.selected === "monk" ? ((e.x - h.x) / (reach + hb.w)) ** 2 + ((e.y - h.y) / (reach * .6 + hb.d)) ** 2 <= 1 : strikes(h, h.facing, e, reach, c.depth);
+    if (hit) { const d = distance(h, e), dx = d ? (e.x - h.x) / d : h.facing, dy = d ? (e.y - h.y) / d : 0; damageEnemy(e, damage, dx * (e.boss ? 10 : 32), dy * (e.boss ? 8 : 22)); }
   }
-  if (state.selected === "monk") { if (h.hp < h.maxHp) floatText(h.x, h.y - 125, "+1", "#86efac"); h.hp = Math.min(h.maxHp, h.hp + 1); burst(h.x, h.y - 40, "#86efac", 12); audio.play("pulse"); }
+  if (state.selected === "monk") { if (h.hp < h.maxHp) floatText(h.x, h.y - 84, "+1", "#86efac"); h.hp = Math.min(h.maxHp, h.hp + 1); burst(h.x, h.y - 40, "#86efac", 12); audio.play("pulse"); }
   else audio.play("swing");
 }
 
@@ -682,7 +696,7 @@ function update(dt) {
   state.hudHint = Math.max(0, (state.hudHint || 0) - dt);
   state.banner = Math.max(0, state.banner - dt);
   h.action = Math.max(0, h.action - dt); h.attackCd = Math.max(0, h.attackCd - dt); h.inv = Math.max(0, h.inv - dt); h.hurt = Math.max(0, h.hurt - dt);
-  if (h.action > 0 && !h.hitDone && h.action < h.actionDuration * .56) { h.hitDone = true; performHeroHit(); }
+  if (h.action > 0 && !h.hitDone && h.action <= h.actionDuration * (1 - (classes[state.selected].hitAt ?? .44))) { h.hitDone = true; performHeroHit(); }
   if (keys.has("Space")) attack();
   const [dx, dy] = heroInput(); h.moving = !!(dx || dy) && !h.action && !h.hurt;
   if (Math.abs(dx) > .15 && !h.action) h.facing = Math.sign(dx); if (h.moving) moveWithCollisions(h, dx * h.speed * dt, dy * h.speed * dt); h.anim += dt * (h.moving ? 10 : 6);
@@ -691,7 +705,7 @@ function update(dt) {
 
   for (const p of state.projectiles) {
     p.x += p.vx * dt; p.life -= dt;
-    for (const e of state.enemies) if (!e.dead && p.life > 0 && Math.hypot(e.x - p.x, e.y - 35 - p.y) < 42) { damageEnemy(e, p.damage, p.facing * 28, 0); p.life = 0; break; }
+    for (const e of state.enemies) if (!e.dead && p.life > 0 && Math.abs(e.x - p.x) < hurtbox(e).w + 14 && Math.abs(e.y - (p.y + 48)) < hurtbox(e).d + 10) { damageEnemy(e, p.damage, p.facing * 28, 0); p.life = 0; break; }
     // Arrows stop at buildings, trees, and rocks instead of passing through them.
     if (p.life > 0 && (plateauAt(p.x, p.y + 48) || state.obstacles.some(o => Math.hypot(p.x - o.x, p.y + 48 - o.y) < o.r))) { p.life = 0; burst(p.x, p.y, "#c9a56a", 5); }
   }
@@ -700,14 +714,18 @@ function update(dt) {
   const alive = state.enemies.filter(e => !e.dead);
   for (const e of state.enemies) {
     if (e.dead) { e.death -= dt; continue; } e.attackCd -= dt; e.hurt = Math.max(0, e.hurt - dt); e.attack = Math.max(0, e.attack - dt);
-    const d = distance(e, h), vx = h.x - e.x, vy = h.y - e.y, attackRange = e.boss ? 132 : 88;
+    const d = distance(e, h), vx = h.x - e.x, vy = h.y - e.y, S = e.boss ? BOSS_STRIKE : ENEMY_STRIKE, toward = Math.sign(vx) || e.facing;
     if (e.boss) { e.castCd -= dt; if (e.castCd <= 0 && d < 560 && d > 150) { e.castCd = 3.6; addFlame(h.x, h.y, .9); addFlame(h.x + (Math.random() - .5) * 120, h.y + (Math.random() - .5) * 70, 1.1); } }
     e.chasing = false;
     if (e.attack > 0) {
-      if (!e.hitDone && e.attack < .3) { e.hitDone = true; if (e.boss) { const fx = e.x + e.facing * 85; addFlame(fx, e.y); addFlame(fx - e.facing * 10, e.y - 42); addFlame(fx - e.facing * 10, e.y + 42); } if (distance(e, h) < attackRange + 12 && h.inv <= 0) { damageHero(e.boss ? 2 : 1, e.boss ? "#fb923c" : "#8ecae6"); h.inv = .75; h.hurt = .18; moveWithCollisions(h, vx / (d || 1) * (e.boss ? 55 : 30), vy / (d || 1) * (e.boss ? 55 : 30)); } }
-    } else if (d < attackRange && e.attackCd <= 0) { e.attack = e.boss ? .72 : .58; e.attackCd = e.boss ? 1.35 : 1.12; e.hitDone = false; e.facing = Math.sign(vx) || e.facing; }
-    else if (d < 520 && d > 75 && !e.hurt) { moveWithCollisions(e, vx / d * e.speed * dt, vy / d * e.speed * dt); e.facing = Math.sign(vx) || e.facing; e.anim += dt * 8; e.chasing = true; }
-    else e.anim += dt * 5;
+      if (!e.hitDone && e.attack <= S.swing * (e.boss ? .45 : .5)) { e.hitDone = true; if (e.boss) { const fx = e.x + e.facing * 85; addFlame(fx, e.y); addFlame(fx - e.facing * 10, e.y - 42); addFlame(fx - e.facing * 10, e.y + 42); } if (strikes(e, e.facing, h, S.reach, S.depth) && h.inv <= 0) { damageHero(e.boss ? 2 : 1, e.boss ? "#fb923c" : "#8ecae6"); h.inv = .75; h.hurt = .18; moveWithCollisions(h, vx / (d || 1) * (e.boss ? 55 : 30), vy / (d || 1) * (e.boss ? 55 : 30)); } }
+    } else if (e.attackCd <= 0 && strikes(e, toward, h, S.reach - 6, S.depth - 4)) { e.attack = S.swing; e.attackCd = e.boss ? 1.35 : 1.12; e.hitDone = false; e.facing = toward; }
+    else {
+      // Swings are horizontal, so close in on a spot level with the hero, beside them, instead of on top of them.
+      const tx = h.x - toward * S.standoff - e.x, ty = h.y - e.y, td = Math.hypot(tx, ty);
+      if (d < 520 && td > 6 && !e.hurt) { const step = Math.min(td, e.speed * dt); moveWithCollisions(e, tx / td * step, ty / td * step); e.facing = toward; e.anim += dt * 8; e.chasing = true; }
+      else { if (!e.hurt && d < 520) e.facing = toward; e.anim += dt * 5; }
+    }
     // Keep enemies from stacking into a single sprite.
     for (const o of alive) {
       if (o === e) continue; const sx = e.x - o.x, sy = e.y - o.y, sd = Math.hypot(sx, sy), min = e.boss || o.boss ? 80 : 46;
@@ -719,7 +737,7 @@ function update(dt) {
   const waveCleared = state.enemies.length && state.enemies.every(e => e.dead);
   if (waveCleared && !state.waveDelay) {
     if (state.wave === state.maxWaves) finishBattle(true);
-    else { state.waveDelay = 2.2; const heal = Math.min(2, h.maxHp - h.hp); if (heal > 0) { h.hp += heal; floatText(h.x, h.y - 125, `+${heal}`, "#86efac"); } state.bannerText = heal > 0 ? `WAVE CLEARED · +${heal} HP` : "WAVE CLEARED"; }
+    else { state.waveDelay = 2.2; const heal = Math.min(2, h.maxHp - h.hp); if (heal > 0) { h.hp += heal; floatText(h.x, h.y - 84, `+${heal}`, "#86efac"); } state.bannerText = heal > 0 ? `WAVE CLEARED · +${heal} HP` : "WAVE CLEARED"; }
   }
   if (state.waveDelay > 0) { state.waveDelay -= dt; if (state.waveDelay <= 0) { state.waveDelay = 0; startWave(state.wave + 1); } }
   openPendingUpgrade();
@@ -728,7 +746,7 @@ function update(dt) {
 }
 
 function sprite(img, x, y, frame, frames, facing = 1, size = 96, alpha = 1) { const fw = img.width / frames, fh = img.height, scale = size / fh; ctx.save(); ctx.globalAlpha = alpha; ctx.translate(Math.round(x), Math.round(y)); ctx.scale(facing, 1); ctx.drawImage(img, Math.floor(frame % frames) * fw, 0, fw, fh, -fw * scale / 2, -fh * scale, fw * scale, fh * scale); ctx.restore(); }
-function gridSprite(img, x, y, frame, row, facing = 1, size = 150, alpha = 1) { const fw = img.width / 7, fh = img.height / 5, scale = size / fh; ctx.save(); ctx.globalAlpha = alpha; ctx.translate(Math.round(x), Math.round(y)); ctx.scale(facing, 1); ctx.drawImage(img, Math.floor(frame % 7) * fw, row * fh, fw, fh, -fw * scale / 2, -fh * scale, fw * scale, fh * scale); ctx.restore(); }
+function gridSprite(img, x, y, frame, row, facing = 1, size = 150, alpha = 1, frames = 7) { const fw = img.width / 7, fh = img.height / 5, scale = size / fh; ctx.save(); ctx.globalAlpha = alpha; ctx.translate(Math.round(x), Math.round(y)); ctx.scale(facing, 1); ctx.drawImage(img, Math.floor(frame % frames) * fw, row * fh, fw, fh, -fw * scale / 2, -fh * scale, fw * scale, fh * scale); ctx.restore(); }
 function ellipse(x, y, rx, ry, color) { if (rx <= 0 || ry <= 0) return; ctx.fillStyle = color; ctx.beginPath(); ctx.ellipse(x, y, rx, ry, 0, 0, Math.PI * 2); ctx.fill(); }
 function bar(x, y, value, max, width = 58, enemy = false) { x = Math.round(x - width / 2); y = Math.round(y); const f = Math.round(width * clamp(value / max, 0, 1)), low = enemy || value / max <= .3; ctx.fillStyle = "#24150c"; ctx.fillRect(x - 1, y - 1, width + 2, 9); ctx.fillStyle = "#2a1a14"; ctx.fillRect(x, y, width, 7); ctx.fillStyle = low ? "#d8433b" : "#6cc04a"; ctx.fillRect(x, y, f, 7); ctx.fillStyle = low ? "#ff8a7a" : "#a8e57e"; ctx.fillRect(x, y, f, 2); ctx.fillStyle = low ? "#8e2522" : "#3f7f2c"; ctx.fillRect(x, y + 5, f, 2); }
 function roundRect(x, y, w, h, r) { ctx.beginPath(); ctx.roundRect(x, y, w, h, r); ctx.fill(); }
@@ -748,14 +766,18 @@ function drawActor(a) {
     if (a.type === "hero") {
       const cl = classes[state.selected], action = o.action > 0, key = state.selected + (action ? "Attack" : o.moving ? "Run" : "Idle"), frames = action ? cl.attack : o.moving ? cl.run : cl.idle, frame = action ? (1 - o.action / o.actionDuration) * frames : o.anim;
       if (o.hp <= 0) { const img = images.dead, fw = img.width / 7, fh = img.height / 2, f = Math.min(6, Math.floor(o.death * 10)); /* hold on the finished skull (end of the first row) */ ctx.drawImage(img, (f % 7) * fw, Math.floor(f / 7) * fh, fw, fh, Math.round(o.x - 56), Math.round(o.y - 96), 112, 112); return; }
-      if (!(o.inv > 0 && Math.floor(o.inv * 12) % 2)) sprite(images[key], o.x, o.y + cl.foot, frame, frames, o.facing, cl.size); bar(o.x, o.y - 118, o.hp, o.maxHp, 74);
-      if (state.selected === "monk" && action) sprite(images.monkEffect, o.x, o.y + 15, frame, 11, 1, 150, .65);
+      if (!(o.inv > 0 && Math.floor(o.inv * 12) % 2)) sprite(images[key], o.x, o.y + cl.foot, frame, frames, o.facing, cl.size); bar(o.x, o.y - 70, o.hp, o.maxHp, 74);
+      if (state.selected === "monk" && action) {
+        const r = cl.range + o.rangeBonus, t = 1 - o.action / o.actionDuration, grow = Math.min(1, t * 2.2);
+        ctx.globalAlpha = .6 * (1 - t); ctx.strokeStyle = "#a7f3d0"; ctx.lineWidth = 3; ctx.beginPath(); ctx.ellipse(o.x, o.y - 4, r * grow, r * .6 * grow, 0, 0, Math.PI * 2); ctx.stroke(); ctx.globalAlpha = 1;
+        sprite(images.monkEffect, o.x, o.y + 15, frame, 11, 1, 150, .65);
+      }
     } else {
-      const attacking = o.attack > 0, near = !!o.chasing, img = attacking ? images.enemyAttack : near ? images.enemyRun : images.enemyIdle, frames = attacking ? 4 : near ? 6 : 8, frame = attacking ? (1 - o.attack / .58) * frames : o.anim;
+      const attacking = o.attack > 0, near = !!o.chasing, img = attacking ? images.enemyAttack : near ? images.enemyRun : images.enemyIdle, frames = attacking ? 4 : near ? 6 : 8, frame = attacking ? Math.min(frames - 1, (1 - o.attack / ENEMY_STRIKE.swing) * frames) : o.anim;
       const alpha = o.dead ? clamp(o.death / .65, 0, 1) : o.hurt > 0 ? .55 : 1;
-      if (o.boss) gridSprite(images.boss, o.x, o.y + 54, attacking ? (1 - o.attack / .72) * 7 : o.anim, attacking ? 2 : near ? 1 : 0, o.facing, 175, alpha);
+      if (o.boss) gridSprite(images.boss, o.x, o.y + 54, attacking ? Math.min(5, (1 - o.attack / BOSS_STRIKE.swing) * 6) : o.anim, attacking ? 2 : near ? 1 : 0, o.facing, 175, alpha, attacking || near ? 6 : 7);
       else sprite(img, o.x, o.y + 30, frame, frames, o.facing, 104, alpha);
-      if (!o.dead) bar(o.x, o.y - (o.boss ? 145 : 105), o.hp, o.maxHp, o.boss ? 130 : 58, true);
+      if (!o.dead) bar(o.x, o.y - (o.boss ? 112 : 64), o.hp, o.maxHp, o.boss ? 130 : 58, true);
     }
     if (o.burn > 0 && !o.dead && o.hp > 0) { const size = 44; ctx.globalAlpha = clamp(o.burn * 2, 0, .9); ctx.drawImage(images.fire, (Math.floor(state.time * 12) % 7) * 128, 0, 128, 128, Math.round(o.x - size / 2 + 6), Math.round(o.y - 70), size, size); ctx.globalAlpha = 1; }
 }
@@ -936,7 +958,7 @@ function logo(cx, y, size) {
 const uiLayout = () => ({ compact: innerWidth < 980 || innerHeight < 680, mobile: innerWidth < 700, short: innerHeight < 580 });
 
 /* ---------- Hall of Heroes ---------- */
-const statPips = cl => [["heart", "HP", R(cl.hp / 2.2)], ["sword", "DMG", cl.damage * 2], ["boot", "SPD", R(clamp((cl.speed - 170) / 14, 1, 5))], ["arrow", "RNG", cl.range > 300 ? 5 : R(cl.range / 50)]];
+const statPips = cl => [["heart", "HP", R(cl.hp / 2.2)], ["sword", "DMG", cl.damage * 2], ["boot", "SPD", R(clamp((cl.speed - 170) / 14, 1, 5))], ["arrow", "RNG", cl.range > 300 ? 5 : clamp(R(cl.range / 20), 1, 5)]];
 function pips(x, y, n, size = 7) { for (let i = 0; i < 5; i++) { const px = x + i * (size + 2); rect(px, y, size, size, C.ink); rect(px + 1, y + 1, size - 2, size - 2, i < n ? "#d9822b" : "#c2a571"); if (i < n) rect(px + 1, y + 1, size - 2, 2, "#ffc25a"); else rect(px + 1, y + 1, size - 2, 1, "#a88b5a"); } }
 
 function heroCard(id, i, x, y, w, h) {
