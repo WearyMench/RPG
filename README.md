@@ -21,6 +21,7 @@ Then open <http://localhost:8000> in your browser.
 - `P` or `Esc`: pause and resume. The game also pauses automatically when the window loses focus.
 - `M`: toggle sound effects (the setting is remembered).
 - `Enter`: fight again with the same hero after a battle ends.
+- `F3`: show the frame counter (FPS and render scale). Opening the page with `?fps` shows it from the start.
 - `R` or click: return to class selection after winning or losing.
 
 ### Touch controls

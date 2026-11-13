@@ -1,7 +1,7 @@
 "use strict";
 
 const canvas = document.querySelector("#game");
-const ctx = canvas.getContext("2d");
+const ctx = canvas.getContext("2d", { alpha: false }); // opaque canvas: the compositor never blends it with the page
 const A = "assets/Tiny Swords/";
 const paths = {
   warriorIdle: A + "Units/Blue Units/Warrior/Warrior_Idle.png", warriorRun: A + "Units/Blue Units/Warrior/Warrior_Run.png", warriorAttack: A + "Units/Blue Units/Warrior/Warrior_Attack1.png",
@@ -29,7 +29,8 @@ const classes = {
   monk: { name: "Monk", description: "Healing area pulse", hp: 8, speed: 210, range: 175, cooldown: 1.15, damage: 1, idle: 6, run: 4, attack: 11, size: 108, foot: 33 },
 };
 const images = {}, WORLD = { w: 41 * 64, h: 28 * 64 }, keys = new Set(), ARROW_SPEED = 570;
-let state, last = performance.now(), groundCache = null, touchUsed = false;
+let state, last = performance.now(), groundCache = null, groundChunks = [], waterRuns = [], touchUsed = false;
+const CHUNK = 512;
 const upgradePool = [
   { id: "power", name: "Tempered Weapon", description: "+1 damage", apply: () => state.hero.damageBonus++ },
   { id: "vitality", name: "Heart of the Valley", description: "+2 maximum health and heal", apply: () => { state.hero.maxHp += 2; state.hero.hp = Math.min(state.hero.maxHp, state.hero.hp + 3); } },
@@ -158,20 +159,35 @@ function buildGroundCache() {
       if (row === 2 || row === 4) g.drawImage(img, sx, sy + 64, 64, 64, c * TILE, (r + 1) * TILE, TILE, TILE);
     }
   }
+  // A world-sized canvas is too big for browsers to keep on the GPU, so drawing from it re-uploads it every frame.
+  // Splitting it into 512px chunks keeps each piece GPU-resident; each one is drawn once now so the upload happens while loading.
+  groundChunks = [];
+  for (let y = 0; y < WORLD.h; y += CHUNK) for (let x = 0; x < WORLD.w; x += CHUNK) {
+    const c = document.createElement("canvas"); c.width = Math.min(CHUNK, WORLD.w - x); c.height = Math.min(CHUNK, WORLD.h - y);
+    c.getContext("2d").drawImage(groundCache, -x, -y); groundChunks.push({ x, y, c }); ctx.drawImage(c, 0, 0, 1, 1);
+  }
+  ctx.clearRect(0, 0, 2, 2); groundCache = null;
+  // Interior land tiles are opaque, so water is only painted on water cells and along the coast (row runs, merged).
+  const needsWater = (c, r) => { if (!landAt(c, r)) return true; for (let dr = -1; dr <= 1; dr++) for (let dc = -1; dc <= 1; dc++) if (!landAt(c + dc, r + dr)) return true; return false; };
+  waterRuns = [];
+  for (let r = 0; r < ROWS; r++) { const runs = []; let start = -1; for (let c = 0; c <= COLS; c++) { const w = c < COLS && needsWater(c, r); if (w && start < 0) start = c; else if (!w && start >= 0) { runs.push([start, c]); start = -1; } } waterRuns.push(runs); }
 }
 
 function drawGround() {
   // Only the visible slice is drawn (with a margin for screen shake).
   const cam = state.camera, sx = clamp(Math.floor(cam.x) - 16, 0, WORLD.w), sy = clamp(Math.floor(cam.y) - 16, 0, WORLD.h), sw = Math.min(WORLD.w - sx, Math.ceil(innerWidth) + 32), sh = Math.min(WORLD.h - sy, Math.ceil(innerHeight) + 32);
   if (sw <= 0 || sh <= 0) return;
-  ctx.fillStyle = waterPattern || "#47aba9"; ctx.fillRect(sx, sy, sw, sh);
+  ctx.fillStyle = waterPattern || "#47aba9";
+  for (let r = Math.floor(sy / TILE), r1 = Math.min(ROWS - 1, Math.floor((sy + sh) / TILE)); r <= r1; r++) for (const [c0, c1] of waterRuns[r]) {
+    const x0 = Math.max(c0 * TILE, sx), x1 = Math.min(c1 * TILE, sx + sw); if (x1 > x0) ctx.fillRect(x0, r * TILE, x1 - x0, TILE);
+  }
   const t = state.time * 8;
   for (const s of terrain.shores) {
     const x = s.c * TILE, y = s.r * TILE; if (x + TILE < sx || x > sx + sw || y + TILE < sy || y > sy + sh) continue;
     ctx.save(); ctx.translate(x + 32, y + 32); ctx.rotate(s.rot); if (s.flip) ctx.scale(-1, 1);
     ctx.drawImage(images[`water${s.piece}`], (Math.floor(t + s.offset) % 12) * 64, 0, 64, 64, -32, -32, 64, 64); ctx.restore();
   }
-  ctx.drawImage(groundCache, sx, sy, sw, sh, sx, sy, sw, sh);
+  for (const k of groundChunks) if (k.x + k.c.width > sx && k.x < sx + sw && k.y + k.c.height > sy && k.y < sy + sh) ctx.drawImage(k.c, k.x, k.y);
 }
 
 function buildScenery() {
@@ -551,7 +567,8 @@ function chooseUpgrade(index) {
   if (state.pendingLevels > 0) rollUpgrades(); else { state.mode = "playing"; state.banner = Math.max(state.banner, 1.2); }
 }
 
-function resize() { const dpr = Math.min(devicePixelRatio || 1, 2); canvas.width = innerWidth * dpr; canvas.height = innerHeight * dpr; canvas.style.width = innerWidth + "px"; canvas.style.height = innerHeight + "px"; ctx.setTransform(dpr, 0, 0, dpr, 0, 0); ctx.imageSmoothingEnabled = false; }
+let renderScale = 1, maxScale = 2; const perf = { sum: 0, n: 0, fps: 0, show: new URLSearchParams(location.search).has("fps") }; // F3 or ?fps shows the frame counter
+function resize() { const dpr = renderScale = Math.min(devicePixelRatio || 1, maxScale); textCache.clear(); canvas.width = innerWidth * dpr; canvas.height = innerHeight * dpr; canvas.style.width = innerWidth + "px"; canvas.style.height = innerHeight + "px"; ctx.setTransform(dpr, 0, 0, dpr, 0, 0); ctx.imageSmoothingEnabled = false; }
 function burst(x, y, color, count = 8) { for (let i = 0; i < count; i++) state.particles.push({ x, y, vx: (Math.random() - .5) * 150, vy: -30 - Math.random() * 90, life: .55, color }); }
 function floatText(x, y, text, color) { state.texts.push({ x: x + (Math.random() - .5) * 16, y, text, color, life: .9 }); }
 function shake(amount) { state.shake = Math.max(state.shake, amount); }
@@ -732,9 +749,11 @@ function drawWorld() {
   const c = state.camera, sx = state.shake ? (Math.random() - .5) * state.shake : 0, sy = state.shake ? (Math.random() - .5) * state.shake : 0;
   ctx.save(); ctx.translate(-Math.round(c.x + sx), -Math.round(c.y + sy)); drawGround();
   const view = { x: c.x, y: c.y, w: innerWidth, h: innerHeight }; drawGroundDetails(view);
+  // Off-screen scenery and critters are skipped (sprites reach up to ~260px above and ~130px beside their anchor).
+  const seen = (x, y) => x > view.x - 140 && x < view.x + view.w + 140 && y > view.y - 40 && y < view.y + view.h + 280;
   const layers = [
-    ...state.scenery.map(item => ({ kind: "scenery", sortY: item.sortY, item })),
-    ...state.critters.map(o => ({ kind: "critter", sortY: o.y, o })),
+    ...state.scenery.filter(item => seen(item.x + (item.type === "rock" ? 32 : 0), item.y + (item.type === "rock" ? 64 : 0))).map(item => ({ kind: "scenery", sortY: item.sortY, item })),
+    ...state.critters.filter(o => seen(o.x, o.y)).map(o => ({ kind: "critter", sortY: o.y, o })),
     ...state.flames.map(f => ({ kind: "flame", sortY: f.warn > 0 ? -1 : f.y, f })),
     ...state.enemies.filter(e => !e.dead || e.death > 0).map(o => ({ kind: "actor", sortY: o.y, actor: { type: "enemy", o } })),
     ...(state.hero ? [{ kind: "actor", sortY: state.hero.y, actor: { type: "hero", o: state.hero } }] : []),
@@ -776,12 +795,23 @@ function rect(x, y, w, h, color) { ctx.fillStyle = color; ctx.fillRect(R(x), R(y
 function textWidth(str, size, weight = 700) { ctx.font = `${weight} ${size}px ${FONT}`; return ctx.measureText(str).width; }
 function fitSize(str, size, maxW, min = 9) { while (size > min && textWidth(str, size) > maxW) size--; return size; }
 // Outlined, drop-shadowed text in the pixel font.
+// Each label is rendered once (outline needs ~10 fillText calls) into a small canvas and reused while it stays the same.
+const textCache = new Map();
 function text(str, x, y, { size = 14, color = C.cream, align = "left", outline = C.ink, weight = 700, shadow = true } = {}) {
-  ctx.font = `${weight} ${size}px ${FONT}`; ctx.textAlign = align; ctx.textBaseline = "alphabetic"; x = R(x); y = R(y);
-  const o = size >= 26 ? 2 : 1;
-  if (shadow) { ctx.fillStyle = "rgba(0,0,0,.4)"; ctx.fillText(str, x + o, y + o + 1); }
-  if (outline) { ctx.fillStyle = outline; for (let dx = -o; dx <= o; dx++) for (let dy = -o; dy <= o; dy++) if (dx || dy) ctx.fillText(str, x + dx, y + dy); }
-  ctx.fillStyle = color; ctx.fillText(str, x, y); ctx.textAlign = "left";
+  str = String(str); const key = `${str}|${size}|${color}|${outline}|${weight}|${shadow}`; let e = textCache.get(key);
+  if (!e) {
+    if (textCache.size > 500) textCache.clear();
+    const font = `${weight} ${size}px ${FONT}`, o = size >= 26 ? 2 : 1, pad = o + 2, asc = Math.ceil(size * 1.05), desc = Math.ceil(size * .4);
+    ctx.font = font; const w = ctx.measureText(str).width, cw = Math.ceil(w) + pad * 2, ch = asc + desc + pad * 2, s = renderScale;
+    const c = document.createElement("canvas"); c.width = Math.max(1, Math.ceil(cw * s)); c.height = Math.ceil(ch * s);
+    const g = c.getContext("2d"); g.scale(s, s); g.font = font; g.textBaseline = "alphabetic"; const bx = pad, by = pad + asc;
+    if (shadow) { g.fillStyle = "rgba(0,0,0,.4)"; g.fillText(str, bx + o, by + o + 1); }
+    if (outline) { g.fillStyle = outline; for (let dx = -o; dx <= o; dx++) for (let dy = -o; dy <= o; dy++) if (dx || dy) g.fillText(str, bx + dx, by + dy); }
+    g.fillStyle = color; g.fillText(str, bx, by);
+    e = { c, w, pad, asc, cw, ch }; textCache.set(key, e);
+  }
+  const left = align === "center" ? x - e.w / 2 : align === "right" ? x - e.w : x;
+  ctx.drawImage(e.c, R(left) - e.pad, R(y) - e.pad - e.asc, e.cw, e.ch);
 }
 // Dark ink lettering for parchment surfaces.
 function inkText(str, x, y, size = 13, align = "left", weight = 700) { text(str, x, y, { size, align, weight, color: C.inkText, outline: null, shadow: false }); }
@@ -1072,9 +1102,12 @@ function drawResults(layout) {
 }
 
 function loop(now) {
-  const dt = Math.min(.033, (now - last) / 1000); last = now; update(dt);
+  const raw = now - last, dt = Math.min(.033, raw / 1000); last = now; update(dt);
+  // Adaptive quality: if a high-DPI screen keeps the game under ~45 fps, render at 1x (pixel art stays crisp).
+  if (raw < 250 && !document.hidden) { perf.sum += raw; if (++perf.n >= 120) { perf.fps = 1000 / (perf.sum / perf.n); if (perf.sum / perf.n > 22 && renderScale > 1) { maxScale = 1; resize(); } perf.sum = perf.n = 0; } }
   hitAreas = []; uiHot = false; ctx.clearRect(0, 0, innerWidth, innerHeight);
   if (state.mode === "select") drawSelection(); else if (state.mode === "upgrade") drawUpgrade(); else { drawWorld(); drawUI(); }
+  if (perf.show) text(`${perf.fps ? Math.round(perf.fps) : "--"} FPS  ${renderScale}x`, innerWidth - 8, innerHeight - 8, { size: 12, align: "right" });
   const cursor = uiHot ? "pointer" : state.mode === "playing" && !state.paused && !state.over ? "crosshair" : "default"; if (canvas.style.cursor !== cursor) canvas.style.cursor = cursor;
   requestAnimationFrame(loop);
 }
@@ -1090,6 +1123,7 @@ addEventListener("keydown", e => {
   if (["Space", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(e.code)) e.preventDefault();
   if (e.repeat) return;
   if (e.code === "KeyM") audio.toggle();
+  else if (e.code === "F3") { e.preventDefault(); perf.show = !perf.show; }
   else if (state.mode === "select" && /^Digit[1-4]$/.test(e.code)) chooseClass(Object.keys(classes)[Number(e.code.at(-1)) - 1]);
   else if (state.mode === "upgrade" && /^Digit[1-3]$/.test(e.code)) chooseUpgrade(Number(e.code.at(-1)) - 1);
   else if (state.over && state.overTime > 1) { if (e.code === "KeyR") reset(); else if (e.code === "Enter") retry(); }
