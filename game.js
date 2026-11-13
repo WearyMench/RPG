@@ -411,6 +411,7 @@ function buildAmbient() {
 
 // Ground-level details, drawn just above the terrain and below everything that sorts by depth.
 function drawGroundDetails(view) {
+  if (perf.lite) return; // lite mode: no grass tufts or water glints
   const t = state.time, vis = (x, y) => x > view.x - 20 && x < view.x + view.w + 20 && y > view.y - 20 && y < view.y + view.h + 20;
   for (const g of ambient.tufts) if (vis(g.x, g.y)) { const f = Math.floor((Math.sin(t * 1.6 + g.phase) + 1) * 1.49); ctx.drawImage(ambient.tuftFrames[f], g.x - 8, g.y - 11); }
   // Glints twinkle on random patches of open water.
@@ -442,6 +443,7 @@ function drawSkyDetails(view) {
     ctx.fillStyle = "#2a2f3a"; if (up) { ctx.fillRect(x - 5, y - 2, 2, 1); ctx.fillRect(x - 3, y - 1, 2, 1); ctx.fillRect(x - 1, y, 3, 1); ctx.fillRect(x + 2, y - 1, 2, 1); ctx.fillRect(x + 4, y - 2, 2, 1); }
     else { ctx.fillRect(x - 5, y + 1, 2, 1); ctx.fillRect(x - 3, y, 2, 1); ctx.fillRect(x - 1, y, 3, 1); ctx.fillRect(x + 2, y, 2, 1); ctx.fillRect(x + 4, y + 1, 2, 1); }
   }
+  if (perf.lite) return; // lite mode: no cloud shadows (large translucent fills)
   ctx.fillStyle = "rgba(14,36,40,.07)";
   for (const c of ambient.clouds) {
     const x = ((c.x + t * c.v) % (WORLD.w + 600)) - 300; if (x + 260 * c.s < view.x || x - 260 * c.s > view.x + view.w) continue;
@@ -569,12 +571,14 @@ function chooseUpgrade(index) {
   if (state.pendingLevels > 0) rollUpgrades(); else { state.mode = "playing"; state.banner = Math.max(state.banner, 1.2); }
 }
 
-let renderScale = 1, maxScale = 2; const perf = { sum: 0, upd: 0, draw: 0, n: 0, stats: null, gpu: null, show: new URLSearchParams(location.search).has("fps") }; // F3 or ?fps shows the diagnostics panel
+let renderScale = 1, maxScale = 2; const params = new URLSearchParams(location.search);
+// F3 or ?fps shows the diagnostics panel; ?lite forces lite mode (otherwise it turns on by itself on slow machines).
+const perf = { sum: 0, upd: 0, draw: 0, n: 0, slow: 0, stats: null, gpu: null, show: params.has("fps"), lite: params.has("lite") };
 // Diagnostics panel in a plain monospace font so the numbers are easy to read on any screen.
 function drawPerf() {
   if (perf.gpu === null) { try { const gl = document.createElement("canvas").getContext("webgl"), ext = gl && gl.getExtension("WEBGL_debug_renderer_info"); perf.gpu = gl ? (ext ? gl.getParameter(ext.UNMASKED_RENDERER_WEBGL) : gl.getParameter(gl.RENDERER)) : "no WebGL"; } catch { perf.gpu = "unknown"; } perf.gpu = String(perf.gpu).replace(/^ANGLE \((.*)\)$/, "$1").replace(/ Direct3D.*$/, "").slice(0, 46); }
   const s = perf.stats, f = v => s ? v.toFixed(1) : "--";
-  const lines = [`FPS ${s ? Math.round(s.fps) : "--"}   frame ${f(s?.frame)} ms`, `update ${f(s?.upd)} ms   draw ${f(s?.draw)} ms`, `canvas ${canvas.width}x${canvas.height}  scale ${renderScale}x  dpr ${devicePixelRatio}`, `GPU ${perf.gpu}`];
+  const lines = [`FPS ${s ? Math.round(s.fps) : "--"}   frame ${f(s?.frame)} ms`, `update ${f(s?.upd)} ms   draw ${f(s?.draw)} ms`, `canvas ${canvas.width}x${canvas.height}  scale ${renderScale}x  dpr ${devicePixelRatio}${perf.lite ? "  LITE" : ""}`, `GPU ${perf.gpu}`];
   ctx.font = "14px Consolas, Menlo, monospace"; ctx.textBaseline = "top"; const w = Math.max(...lines.map(l => ctx.measureText(l).width)) + 16, h = lines.length * 18 + 10, x = innerWidth - w - 8, y = innerHeight - h - 8;
   ctx.fillStyle = "rgba(10,12,16,.82)"; ctx.fillRect(x, y, w, h); ctx.fillStyle = "#e9f5d0"; lines.forEach((l, i) => ctx.fillText(l, x + 8, y + 6 + i * 18)); ctx.textBaseline = "alphabetic";
 }
@@ -913,7 +917,17 @@ function medallion(cx, cy, r, icon) {
   const s = r >= 26 ? 3 : 2, [iw, ih] = iconSize(icon, s); drawIcon(icon, cx - iw / 2, cy - ih / 2, s);
 }
 function keycap(x, y, label) { const w = R(Math.max(18, textWidth(label, 10) + 10)), h = 18; rect(x, y, w, h, C.ink); rect(x + 1, y + 1, w - 2, h - 2, "#bfb193"); rect(x + 1, y + 1, w - 2, h - 5, "#f4ead2"); text(label, x + w / 2, y + 12, { size: 10, color: C.inkText, outline: null, shadow: false, align: "center" }); return w; }
-function vignette(alpha = .75) { const g = ctx.createRadialGradient(innerWidth / 2, innerHeight / 2, Math.min(innerWidth, innerHeight) * .15, innerWidth / 2, innerHeight / 2, Math.max(innerWidth, innerHeight) * .75); g.addColorStop(0, `rgba(10,14,16,${alpha * .45})`); g.addColorStop(1, `rgba(5,7,9,${alpha})`); ctx.fillStyle = g; ctx.fillRect(0, 0, innerWidth, innerHeight); }
+// The vignette gradient is rendered once per screen size into a small canvas (it is smooth, so a quarter-size copy
+// stretched with smoothing looks the same) and blitted with globalAlpha, instead of computing a gradient every frame.
+let vignetteCache = null;
+function vignette(alpha = .75) {
+  const w = Math.max(1, Math.ceil(innerWidth / 4)), h = Math.max(1, Math.ceil(innerHeight / 4));
+  if (!vignetteCache || vignetteCache.width !== w || vignetteCache.height !== h) {
+    vignetteCache = document.createElement("canvas"); vignetteCache.width = w; vignetteCache.height = h; const g = vignetteCache.getContext("2d");
+    const grad = g.createRadialGradient(w / 2, h / 2, Math.min(w, h) * .15, w / 2, h / 2, Math.max(w, h) * .75); grad.addColorStop(0, "rgba(10,14,16,.45)"); grad.addColorStop(1, "rgba(5,7,9,1)"); g.fillStyle = grad; g.fillRect(0, 0, w, h);
+  }
+  ctx.save(); ctx.globalAlpha = clamp(alpha, 0, 1); ctx.imageSmoothingEnabled = true; ctx.drawImage(vignetteCache, 0, 0, innerWidth, innerHeight); ctx.restore();
+}
 function logo(cx, y, size) {
   const label = "CHRONICLES OF THE VALLEY"; size = fitSize(label, size, innerWidth - 40, 14);
   const g = ctx.createLinearGradient(0, y - size, 0, y); g.addColorStop(0, "#fff4b8"); g.addColorStop(.55, "#f2c14e"); g.addColorStop(1, "#c77d22");
@@ -1124,7 +1138,12 @@ function loop(now) {
   // Adaptive quality: if a high-DPI screen keeps the game under ~45 fps, render at 1x (pixel art stays crisp).
   if (raw < 250 && !document.hidden) {
     perf.sum += raw; perf.upd += t1 - t0; perf.draw += t2 - t1;
-    if (++perf.n >= 60) { const avg = perf.sum / perf.n; perf.stats = { fps: 1000 / avg, frame: avg, upd: perf.upd / perf.n, draw: perf.draw / perf.n }; if (avg > 22 && renderScale > 1) { maxScale = 1; resize(); } perf.sum = perf.upd = perf.draw = perf.n = 0; }
+    if (++perf.n >= 60) {
+      const avg = perf.sum / perf.n; perf.stats = { fps: 1000 / avg, frame: avg, upd: perf.upd / perf.n, draw: perf.draw / perf.n };
+      // Still slow at 1x for two windows in a row (~4 s): switch to lite mode for the rest of the session.
+      if (avg > 22 && renderScale > 1) { maxScale = 1; resize(); } else if (avg > 22 && !perf.lite) { if (++perf.slow >= 2) perf.lite = true; } else perf.slow = 0;
+      perf.sum = perf.upd = perf.draw = perf.n = 0;
+    }
   }
   if (perf.show) drawPerf();
   const cursor = uiHot ? "pointer" : state.mode === "playing" && !state.paused && !state.over ? "crosshair" : "default"; if (canvas.style.cursor !== cursor) canvas.style.cursor = cursor;

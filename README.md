@@ -22,6 +22,7 @@ Then open <http://localhost:8000> in your browser.
 - `M`: toggle sound effects (the setting is remembered).
 - `Enter`: fight again with the same hero after a battle ends.
 - `F3`: show the diagnostics panel (FPS, frame/update/draw time, canvas size, render scale and GPU). Opening the page with `?fps` shows it from the start.
+- Slow machines: the game drops to 1x resolution and then to lite mode (no cloud shadows, grass tufts or water glints) if it stays under ~45 FPS. `?lite` forces lite mode.
 - `R` or click: return to class selection after winning or losing.
 
 ### Touch controls
