@@ -32,6 +32,13 @@ build/
 coverage/
 .cache/
 
+# Deployment (Netlify CLI local state and functions build)
+.netlify/
+
+# Claude Code: personal settings stay local; .claude/launch.json (preview server) is shared
+.claude/settings.local.json
+.claude/worktrees/
+
 # Local servers and environment variables
 .env
 .env.*
