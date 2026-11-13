@@ -569,7 +569,15 @@ function chooseUpgrade(index) {
   if (state.pendingLevels > 0) rollUpgrades(); else { state.mode = "playing"; state.banner = Math.max(state.banner, 1.2); }
 }
 
-let renderScale = 1, maxScale = 2; const perf = { sum: 0, n: 0, fps: 0, show: new URLSearchParams(location.search).has("fps") }; // F3 or ?fps shows the frame counter
+let renderScale = 1, maxScale = 2; const perf = { sum: 0, upd: 0, draw: 0, n: 0, stats: null, gpu: null, show: new URLSearchParams(location.search).has("fps") }; // F3 or ?fps shows the diagnostics panel
+// Diagnostics panel in a plain monospace font so the numbers are easy to read on any screen.
+function drawPerf() {
+  if (perf.gpu === null) { try { const gl = document.createElement("canvas").getContext("webgl"), ext = gl && gl.getExtension("WEBGL_debug_renderer_info"); perf.gpu = gl ? (ext ? gl.getParameter(ext.UNMASKED_RENDERER_WEBGL) : gl.getParameter(gl.RENDERER)) : "no WebGL"; } catch { perf.gpu = "unknown"; } perf.gpu = String(perf.gpu).replace(/^ANGLE \((.*)\)$/, "$1").replace(/ Direct3D.*$/, "").slice(0, 46); }
+  const s = perf.stats, f = v => s ? v.toFixed(1) : "--";
+  const lines = [`FPS ${s ? Math.round(s.fps) : "--"}   frame ${f(s?.frame)} ms`, `update ${f(s?.upd)} ms   draw ${f(s?.draw)} ms`, `canvas ${canvas.width}x${canvas.height}  scale ${renderScale}x  dpr ${devicePixelRatio}`, `GPU ${perf.gpu}`];
+  ctx.font = "14px Consolas, Menlo, monospace"; ctx.textBaseline = "top"; const w = Math.max(...lines.map(l => ctx.measureText(l).width)) + 16, h = lines.length * 18 + 10, x = innerWidth - w - 8, y = innerHeight - h - 8;
+  ctx.fillStyle = "rgba(10,12,16,.82)"; ctx.fillRect(x, y, w, h); ctx.fillStyle = "#e9f5d0"; lines.forEach((l, i) => ctx.fillText(l, x + 8, y + 6 + i * 18)); ctx.textBaseline = "alphabetic";
+}
 function resize() { const dpr = renderScale = Math.min(devicePixelRatio || 1, maxScale); textCache.clear(); canvas.width = innerWidth * dpr; canvas.height = innerHeight * dpr; canvas.style.width = innerWidth + "px"; canvas.style.height = innerHeight + "px"; ctx.setTransform(dpr, 0, 0, dpr, 0, 0); ctx.imageSmoothingEnabled = false; }
 function burst(x, y, color, count = 8) { for (let i = 0; i < count; i++) state.particles.push({ x, y, vx: (Math.random() - .5) * 150, vy: -30 - Math.random() * 90, life: .55, color }); }
 function floatText(x, y, text, color) { state.texts.push({ x: x + (Math.random() - .5) * 16, y, text, color, life: .9 }); }
@@ -1107,12 +1115,18 @@ function drawResults(layout) {
 }
 
 function loop(now) {
-  const raw = now - last, dt = Math.min(.033, raw / 1000); last = now; update(dt);
-  // Adaptive quality: if a high-DPI screen keeps the game under ~45 fps, render at 1x (pixel art stays crisp).
-  if (raw < 250 && !document.hidden) { perf.sum += raw; if (++perf.n >= 120) { perf.fps = 1000 / (perf.sum / perf.n); if (perf.sum / perf.n > 22 && renderScale > 1) { maxScale = 1; resize(); } perf.sum = perf.n = 0; } }
-  hitAreas = []; uiHot = false; ctx.clearRect(0, 0, innerWidth, innerHeight);
+  const raw = now - last, dt = Math.min(.033, raw / 1000); last = now;
+  const t0 = performance.now(); update(dt); const t1 = performance.now();
+  // The ground covers the whole screen, so the full-screen clear is only needed when the window is wider/taller than the world.
+  hitAreas = []; uiHot = false; if (innerWidth > WORLD.w || innerHeight > WORLD.h) ctx.clearRect(0, 0, innerWidth, innerHeight);
   if (state.mode === "select") drawSelection(); else if (state.mode === "upgrade") drawUpgrade(); else { drawWorld(); drawUI(); }
-  if (perf.show) text(`${perf.fps ? Math.round(perf.fps) : "--"} FPS  ${renderScale}x`, innerWidth - 8, innerHeight - 8, { size: 12, align: "right" });
+  const t2 = performance.now();
+  // Adaptive quality: if a high-DPI screen keeps the game under ~45 fps, render at 1x (pixel art stays crisp).
+  if (raw < 250 && !document.hidden) {
+    perf.sum += raw; perf.upd += t1 - t0; perf.draw += t2 - t1;
+    if (++perf.n >= 60) { const avg = perf.sum / perf.n; perf.stats = { fps: 1000 / avg, frame: avg, upd: perf.upd / perf.n, draw: perf.draw / perf.n }; if (avg > 22 && renderScale > 1) { maxScale = 1; resize(); } perf.sum = perf.upd = perf.draw = perf.n = 0; }
+  }
+  if (perf.show) drawPerf();
   const cursor = uiHot ? "pointer" : state.mode === "playing" && !state.paused && !state.over ? "crosshair" : "default"; if (canvas.style.cursor !== cursor) canvas.style.cursor = cursor;
   requestAnimationFrame(loop);
 }
