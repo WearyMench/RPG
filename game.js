@@ -42,7 +42,9 @@ const upgradePool = [
 const seeded = n => { const x = Math.sin(n * 999.31) * 43758.5453; return x - Math.floor(x); };
 const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
 const distance = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
-const loadImage = src => new Promise((resolve, reject) => { const img = new Image(); img.onload = () => resolve(img); img.onerror = reject; img.src = src; });
+// Images are fully decoded up front (as ImageBitmaps when supported) so the first time a sprite appears doesn't hitch.
+const loadImage = src => new Promise((resolve, reject) => { const img = new Image(); img.onload = () => resolve(img); img.onerror = reject; img.src = src; })
+  .then(img => window.createImageBitmap ? createImageBitmap(img).catch(() => img) : img);
 const formatTime = s => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`;
 const storage = {
   get(key, fallback) { try { const v = localStorage.getItem("cotv." + key); return v === null ? fallback : JSON.parse(v); } catch { return fallback; } },
@@ -709,7 +711,8 @@ function update(dt) {
   }
   if (state.waveDelay > 0) { state.waveDelay -= dt; if (state.waveDelay <= 0) { state.waveDelay = 0; startWave(state.wave + 1); } }
   openPendingUpgrade();
-  state.camera.x += (clamp(h.x - innerWidth / 2, 0, Math.max(0, WORLD.w - innerWidth)) - state.camera.x) * Math.min(1, dt * 6); state.camera.y += (clamp(h.y - innerHeight / 2, 0, Math.max(0, WORLD.h - innerHeight)) - state.camera.y) * Math.min(1, dt * 6);
+  const follow = 1 - Math.exp(-dt * 6); // frame-rate independent smoothing
+  state.camera.x += (clamp(h.x - innerWidth / 2, 0, Math.max(0, WORLD.w - innerWidth)) - state.camera.x) * follow; state.camera.y += (clamp(h.y - innerHeight / 2, 0, Math.max(0, WORLD.h - innerHeight)) - state.camera.y) * follow;
 }
 
 function sprite(img, x, y, frame, frames, facing = 1, size = 96, alpha = 1) { const fw = img.width / frames, fh = img.height, scale = size / fh; ctx.save(); ctx.globalAlpha = alpha; ctx.translate(Math.round(x), Math.round(y)); ctx.scale(facing, 1); ctx.drawImage(img, Math.floor(frame % frames) * fw, 0, fw, fh, -fw * scale / 2, -fh * scale, fw * scale, fh * scale); ctx.restore(); }
@@ -747,7 +750,9 @@ function drawActor(a) {
 
 function drawWorld() {
   const c = state.camera, sx = state.shake ? (Math.random() - .5) * state.shake : 0, sy = state.shake ? (Math.random() - .5) * state.shake : 0;
-  ctx.save(); ctx.translate(-Math.round(c.x + sx), -Math.round(c.y + sy)); drawGround();
+  // Snap the camera relative to the hero so the hero never jitters by a pixel against the scrolling world.
+  const h = state.hero, rx = h ? Math.round(h.x) - Math.round(h.x - c.x) : Math.round(c.x), ry = h ? Math.round(h.y) - Math.round(h.y - c.y) : Math.round(c.y);
+  ctx.save(); ctx.translate(-(rx + Math.round(sx)), -(ry + Math.round(sy))); drawGround();
   const view = { x: c.x, y: c.y, w: innerWidth, h: innerHeight }; drawGroundDetails(view);
   // Off-screen scenery and critters are skipped (sprites reach up to ~260px above and ~130px beside their anchor).
   const seen = (x, y) => x > view.x - 140 && x < view.x + view.w + 140 && y > view.y - 40 && y < view.y + view.h + 280;
@@ -1164,6 +1169,8 @@ canvas.addEventListener("contextmenu", e => e.preventDefault());
     // Wait briefly for the pixel font; fall back to Georgia if it can't load (e.g. offline).
     const font = document.fonts ? Promise.race([Promise.all([document.fonts.load(`700 16px "Pixelify Sans"`), document.fonts.load(`400 16px "Pixelify Sans"`)]), new Promise(r => setTimeout(r, 2500))]).catch(() => {}) : null;
     await Promise.all([font, ...Object.entries(paths).map(async ([key, path]) => images[key] = await loadImage(path))]);
-    resize(); buildGroundCache(); reset(); buildAmbient(); const loading = document.querySelector("#loading"); loading.classList.add("hidden"); setTimeout(() => loading.remove(), 400); requestAnimationFrame(loop);
+    resize(); buildGroundCache(); reset(); buildAmbient();
+    // Upload every sprite sheet to the GPU now (one tiny draw each) instead of mid-battle.
+    for (const img of Object.values(images)) ctx.drawImage(img, 0, 0, 1, 1); ctx.clearRect(0, 0, 2, 2); const loading = document.querySelector("#loading"); loading.classList.add("hidden"); setTimeout(() => loading.remove(), 400); requestAnimationFrame(loop);
   } catch (err) { document.querySelector("#loading").textContent = "The assets could not be loaded. Run the game through a local server."; console.error(err); }
 })();
